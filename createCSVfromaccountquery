@@ -1,0 +1,55 @@
+List<Account> acc = [Select id ,name,owner.name,employee__r.EMailAddress__c,houseOwnerInccorect__c,Rep_ID_Primary_AM__c,OwnerId,Primary_AM__c,Primary_AM__r.Name from account 
+ where Employee__c != null
+  and employee__r.HouseAccountFlag__c = false
+  and owner.name = 'House Account User'];
+system.debug('count '+acc.size());
+List<String> emails = new List<String> ();
+for(Account a : acc){
+    emails.add(a.employee__r.EMailAddress__c);
+}
+
+List<User> checkforOwner = [Select id, name, email from User where isactive = true and email in : emails];
+Map<String,User> checkOwner = new Map<String,User>();
+for(user u : [Select id, name, email from User where isactive = true and email in : emails]){
+ checkOwner.put(u.email , u);
+}
+List<Account> accsUpdate = new List<Account> ();
+for(Account a : acc){
+    if(checkOwner.containsKey(a.employee__r.EMailAddress__c)){
+        User u = checkOwner.get(a.employee__r.EMailAddress__c);
+        a.houseOwnerInccorect__c = true; 
+        a.OwnerId = u.Id;
+        a.Rep_ID_Primary_AM__c = u.Name;
+        accsUpdate.add(a);
+        }
+    }
+    
+system.debug('Number of users not mapped '+ accsUpdate.size());
+system.debug('Number of users not mapped '+ accsUpdate);
+
+
+String generatedCSVFile ='';
+List<String> queryFields = new List<String>{'id' ,'name','CurrentOwnerName','employee__r.EMailAddress__c,NewOwnerId,NewOwnerName'};
+String fileRow = '';
+
+for(Account company: accsUpdate){
+	fileRow = '';
+	fileRow = fileRow +','+ company.Id;
+	fileRow = fileRow +','+ company.Name;
+    fileRow = fileRow +','+ company.Owner.name;
+    fileRow = fileRow +','+ company.Employee__r.EMailAddress__c;
+    fileRow = fileRow +','+ company.OwnerId;
+    fileRow = fileRow +','+ company.Rep_ID_Primary_AM__c;
+	fileRow = fileRow.replaceFirst(',','');
+	generatedCSVFile = generatedCSVFile + fileRow + '\n';
+}
+    ContentVersion cv = new ContentVersion();
+        cv.ContentLocation = 'S'; //denotes it resides on Salesforce
+        cv.Title = 'accountsHouseUpdate.csv'; //title of the file
+        cv.PathOnClient = 'accountsHouseUpdate.csv'; // full path within Salesforce this can just be the name of file to be in the library
+        cv.VersionData = Blob.valueOf(generatedCSVFile); //file data
+        insert cv;
+
+        system.debug('new content '+cv.Id);
+
+        sfdx force:org:display -u govProd --verbose
